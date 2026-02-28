@@ -1,0 +1,22 @@
+{
+  "name": "chrome-right-search",
+  "version": "1.0.0",
+  "description": "Chrome extension for searching selected text with custom search engines via right-click",
+  "main": "dist/background.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "chrome-extension",
+    "search",
+    "context-menu"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "typescript": "^5.3.3"
+  }
+}
