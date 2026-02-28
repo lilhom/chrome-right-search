@@ -31,6 +31,33 @@
       padding: 10px 0;
       border-bottom: 1px solid #eee;
     }
+    .engine-item.dragging {
+      opacity: 0.6;
+    }
+    .engine-item.engine-placeholder {
+      border: none;
+      background: transparent;
+      padding: 0;
+    }
+    .engine-item .drag-handle {
+      width: 24px;
+      height: 24px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
+      color: #666;
+      cursor: grab;
+      font-size: 14px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .engine-item .drag-handle:active {
+      cursor: grabbing;
+    }
     .engine-item:last-child {
       border-bottom: none;
     }
@@ -285,6 +312,7 @@
 </head>
 <body>
   <h1>搜索引擎设置</h1>
+  <p class="hint">可拖动每行左侧手柄调整搜索引擎顺序。</p>
   
   <div class="engine-list" id="engineList">
   </div>
