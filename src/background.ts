@@ -9,6 +9,8 @@ let searchEngines: SearchEngine[] = [];
  * 标记扩展是否已完成初始化，防止重复初始化
  */
 let initialized = false;
+let initPromise: Promise<void> | null = null;
+let menuUpdatePromise: Promise<void> = Promise.resolve();
 
 /**
  * 初始化函数，在扩展安装、启动或页面加载时调用
@@ -18,32 +20,40 @@ let initialized = false;
 async function init(): Promise<void> {
   // 防止重复初始化
   if (initialized) return;
-
-  try {
-    // 从同步存储获取搜索引擎配置
-    const result = await chrome.storage.sync.get(STORAGE_KEYS.SEARCH_ENGINES);
-    if (result[STORAGE_KEYS.SEARCH_ENGINES]) {
-      // 已存在配置，使用存储的配置
-      searchEngines = result[STORAGE_KEYS.SEARCH_ENGINES];
-
-      // 创建右键菜单
-      await createContextMenu();
-    } else {
-      // 不存在配置，使用默认配置并保存到存储
-      searchEngines = DEFAULT_SEARCH_ENGINES;
-      await chrome.storage.sync.set({
-        [STORAGE_KEYS.SEARCH_ENGINES]: DEFAULT_SEARCH_ENGINES,
-      });
-    }
-
-    // 标记已初始化
-    initialized = true;
-  } catch (error) {
-    console.error('初始化失败:', error);
-    // 初始化失败时使用默认配置
-    searchEngines = DEFAULT_SEARCH_ENGINES;
-    initialized = true;
+  if (initPromise) {
+    await initPromise;
+    return;
   }
+
+  initPromise = (async () => {
+    try {
+      // 从同步存储获取搜索引擎配置
+      const result = await chrome.storage.sync.get(STORAGE_KEYS.SEARCH_ENGINES);
+      if (result[STORAGE_KEYS.SEARCH_ENGINES]) {
+        // 已存在配置，使用存储的配置
+        searchEngines = result[STORAGE_KEYS.SEARCH_ENGINES];
+      } else {
+        // 不存在配置，使用默认配置并保存到存储
+        searchEngines = DEFAULT_SEARCH_ENGINES;
+        await chrome.storage.sync.set({
+          [STORAGE_KEYS.SEARCH_ENGINES]: DEFAULT_SEARCH_ENGINES,
+        });
+      }
+
+      // 无论配置来自存储还是默认值，都立即创建菜单
+      await createContextMenu();
+    } catch (error) {
+      console.error('初始化失败:', error);
+      // 初始化失败时使用默认配置，保证右键菜单仍可工作
+      searchEngines = DEFAULT_SEARCH_ENGINES;
+      await createContextMenu();
+    } finally {
+      initialized = true;
+      initPromise = null;
+    }
+  })();
+
+  await initPromise;
 }
 
 // 存储所有搜索引擎配置的数组
@@ -71,47 +81,50 @@ function buildSearchUrl(engine: SearchEngine, query: string): string {
  * @returns {Promise<void>}
  */
 async function createContextMenu(): Promise<void> {
-  try {
-    // 等待清除所有现有菜单项完成
-    await new Promise<void>((resolve) => {
-      chrome.contextMenus.removeAll(() => resolve());
-    });
-  } catch {
-    // 忽略清除过程中的错误
-  }
+  menuUpdatePromise = menuUpdatePromise.then(async () => {
+    try {
+      // 等待清除所有现有菜单项完成
+      await new Promise<void>((resolve) => {
+        chrome.contextMenus.removeAll(() => resolve());
+      });
+    } catch {
+      // 忽略清除过程中的错误
+    }
 
-  // 获取已启用的搜索引擎
-  const engines = searchEngines.filter((e) => e.enabled);
-  // 如果没有启用的搜索引擎，直接返回
-  if (engines.length === 0) return;
+    // 获取已启用的搜索引擎
+    const engines = searchEngines.filter((e) => e.enabled);
+    // 如果没有启用的搜索引擎，直接返回
+    if (engines.length === 0) return;
 
-  // 父菜单项ID
-  const parentId = 'right-search-parent';
-  
-  // 创建父菜单项，创建完成后再创建子菜单项
-  try {
-    chrome.contextMenus.create({
-      id: parentId,
-      title: '右键搜索',
-      contexts: ['selection'],  // 仅在选中文本时显示
-    });
-  } catch (error) {
-    return;  // 停止创建子菜单
-  }
+    // 父菜单项ID
+    const parentId = 'right-search-parent';
 
-  // 为每个启用的搜索引擎创建子菜单项
-  for (const engine of engines) {
+    // 创建父菜单项，创建完成后再创建子菜单项
     try {
       chrome.contextMenus.create({
-        id: `search-${engine.id}`,
-        parentId: parentId,
-        title: engine.name,
+        id: parentId,
+        title: '右键搜索',
         contexts: ['selection'],
       });
+    } catch {
+      return;
     }
-    catch (error) {
+
+    // 为每个启用的搜索引擎创建子菜单项
+    for (const engine of engines) {
+      try {
+        chrome.contextMenus.create({
+          id: `search-${engine.id}`,
+          parentId: parentId,
+          title: engine.name,
+          contexts: ['selection'],
+        });
+      } catch {
+      }
     }
-  }
+  });
+
+  await menuUpdatePromise;
 }
 
 /**
@@ -121,6 +134,8 @@ async function createContextMenu(): Promise<void> {
  * @param tab - 用户当前所在的标签页
  */
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  await init();
+
   // 检查是否有选中文本和有效的标签页
   if (!info.selectionText || !tab?.id) {
     return;
